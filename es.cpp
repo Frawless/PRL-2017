@@ -19,29 +19,29 @@
 #include <vector>
 #include <string> 
 
-#define BUFSIZE 1
-#define TAG 0
-#define SIZE 1
+using namespace std;
 
+#define BUFF_SIZE 2
+
+#define TAG_DON 0
 #define TAG_BUS 1
 #define TAG_LIN 2
 #define TAG_SOR 3
-#define TAG_DON_VAL 4
-#define TAG_DON_IND 5
 #define EXEC_PROC 0
-
-using namespace std;
  
+// Struktura pro vlastnosti procesoru
 typedef struct {
 	int procCount;
 	int procId;
 	int nextProc;
 	int prevProc;
-	int regC;
-	int regX;
-	int regY;
-	int regZ;
 } T_SORT;
+
+// Struktura pro jednotlivé registry, které se přenáší
+typedef struct {
+	int value;
+	int index;
+} T_REG;
 
 
 long long int numCnt = 0;
@@ -61,10 +61,9 @@ void executiveSort(T_SORT* sort){
 	vector<int>::iterator i;
 	vector<int> numbers;
 	int sortedNumbers[sort->procCount-1];
-	int numberX;
-	int indexX;
 	
-//	cerr<<"Procesor: "<<sort->nextProc<<endl;
+	T_REG* regX = new T_REG;
+	T_REG* regZ = new T_REG;
 	
 	while(1){
 		number = inputFile.get();
@@ -72,7 +71,6 @@ void executiveSort(T_SORT* sort){
 		if(inputFile.eof())
 			break;
 		numbers.push_back(number);
-		//cerr<<"Number "<<x<<": "<<number<<endl;
 	}
 	
 	inputFile.close();
@@ -84,119 +82,97 @@ void executiveSort(T_SORT* sort){
 	
 	numCnt = numbers.size();
 	
-	// Distribuce počtu čísel na sběrnici
-//	MPI_Bcast(&numCnt,1,MPI_INT,0,MPI_COMM_WORLD);
-	
 	// Rozesílání čísel
 	for(int i = 0; i < numCnt; i++)
 	{
-		numberX = numbers[i];
-		indexX = i;
-//		cerr<<"numberX: "<<numberX<<"| indexX: "<<indexX<<" to processor: "<<i+1<<endl;
+		regX->value = numbers[i];
+		regX->index = i;
 		// Sběrnice
-		MPI_Send(&numberX, BUFSIZE, MPI_INT, i+1, TAG_BUS, MPI_COMM_WORLD);
-//		MPI_Send(&indexX, BUFSIZE, MPI_INT, i+1, TAG_BUS, MPI_COMM_WORLD);
+		MPI_Send(regX, BUFF_SIZE, MPI_INT, i+1, TAG_BUS, MPI_COMM_WORLD);
 		
 		// Lineární spojení
-		MPI_Send(&numberX, BUFSIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);
-//		MPI_Send(&indexX, BUFSIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);		
+		MPI_Send(regX, BUFF_SIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);
 	}
-	
-	int recv[2];
 	
 	// Přijmutí seřazených čísel
 	for(int i = 0; i < numCnt; i++)
 	{
-		MPI_Recv(&recv, 2, MPI_INT, MPI_ANY_SOURCE, TAG_DON_VAL, MPI_COMM_WORLD, &stat);
-//		MPI_Recv(&sortedIndex, BUFSIZE, MPI_INT, MPI_ANY_SOURCE, TAG_DON_IND, MPI_COMM_WORLD, &stat);
-		
-//		cerr<<"Sorted: Num:"<<sortedNumber[0]<<" index:"<<sortedNumber[1]<<endl;
-		sortedNumbers[recv[1]-1] = recv[0];
+		MPI_Recv(regZ, 2, MPI_INT, MPI_ANY_SOURCE, TAG_DON, MPI_COMM_WORLD, &stat);
+		sortedNumbers[regZ->index-1] = regZ->value;
 	}
-//	cerr<<"Přijmuto"<<endl;
 	
 	// Výsledný výpis
-	for(int z = 0; z < (sort->procCount-1); z++)
+	for(int z = 0; z < numCnt; z++)
 		cout<<sortedNumbers[z]<<endl;	
+	
+	free(regX);
+	free(regZ);
 }
 
 void sortNumbers(T_SORT* sort){
-	int indexZ;
+	// Jednotlivé registry
+	T_REG* regX = new T_REG;
+	T_REG* regY = new T_REG;
+	T_REG* regZ = new T_REG;
+	int regC = 1;
+	
+	numCnt = sort->procCount-1;
 	
 	// Nahrání hodnoty X a jeho indexu ze sběrnice
-	MPI_Recv(&sort->regX, BUFSIZE, MPI_INT, EXEC_PROC, TAG_BUS, MPI_COMM_WORLD, &stat);
-//	MPI_Recv(&indexX, BUFSIZE, MPI_INT, EXEC_PROC, TAG_BUS, MPI_COMM_WORLD, &stat);
+	MPI_Recv(regX, BUFF_SIZE, MPI_INT, EXEC_PROC, TAG_BUS, MPI_COMM_WORLD, &stat);
 	
 	// Přijmutí seřazených čísel
-	for(int i = 0; i < (sort->procCount-1); i++)
+	for(int i = 0; i < numCnt; i++)
 	{
 		// Lineární spojení - získání hodnot
-		MPI_Recv(&sort->regY, BUFSIZE, MPI_INT, sort->prevProc, TAG_LIN, MPI_COMM_WORLD, &stat);
-//		MPI_Recv(&indexY, BUFSIZE, MPI_INT, sort->prevProc, TAG_LIN, MPI_COMM_WORLD, &stat);			
-		
-		// Každý procesor se neprázdným X a Y porovná X a Y
-		// pokud X > Y -> C++
-		if (sort->regX > sort->regY)
-			sort->regC++;
+		MPI_Recv(regY, BUFF_SIZE, MPI_INT, sort->prevProc, TAG_LIN, MPI_COMM_WORLD, &stat);
+
+		/* 
+		 * Každý procesor se neprázdným X a Y porovná X a Y
+		 * Nutno ošetřit stejná čísla na základě indexu
+		 * viz algortihm 2 v http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.106.4976&rep=rep1&type=pdf 
+		 */
+		if (regX->value == regY->value && regX->index > regY->index)
+			regC++;
+		else if (regX->value > regY->value)
+			regC++;
 		
 		// Lineární spojení - posun Y vpravo
 		if(sort->nextProc < sort->procCount)
-		{
-			MPI_Send(&sort->regY, BUFSIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);
-//			MPI_Send(&indexY, BUFSIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);			
-		}
+			MPI_Send(regY, BUFF_SIZE, MPI_INT, sort->nextProc, TAG_LIN, MPI_COMM_WORLD);
 	}
 	
-//	cerr<<"Procesor: "<<sort->procId<<" Hodnota X: "<<sort->regX<<" Správný index: "<<sort->regC<<endl;
-	
 	// Poslání hodnoty X procesoru s ID == C (Sběrnice)
-	MPI_Send(&sort->regX, BUFSIZE, MPI_INT, sort->regC, TAG_SOR, MPI_COMM_WORLD);
-//	MPI_Send(&(sort->regC), BUFSIZE, MPI_INT, sort->regC, TAG_SOR, MPI_COMM_WORLD);
+	MPI_Send(regX, BUFF_SIZE, MPI_INT, regC, TAG_SOR, MPI_COMM_WORLD);
 	
 	// Uložení posladné hodnoty X do registru Z (sorted)	
-	MPI_Recv(&sort->regZ, BUFSIZE, MPI_INT, MPI_ANY_SOURCE, TAG_SOR, MPI_COMM_WORLD, &stat);
-//	MPI_Recv(&indexZ, BUFSIZE, MPI_INT, MPI_ANY_SOURCE, TAG_SOR, MPI_COMM_WORLD, &stat);
-	
-//	cerr<<"Procesor: "<<sort->procId<<" Hodnota Z: "<<sort->regZ<<endl;
-	
-	int send[2];
-	send[0] = sort->regZ;
-	send[1] = sort->procId;
-	
+	MPI_Recv(regZ, BUFF_SIZE, MPI_INT, MPI_ANY_SOURCE, TAG_SOR, MPI_COMM_WORLD, &stat);
+	// Získání správného indexu do seřazené posloupnosti
+	regZ->index = sort->procId;
 	// Odeslání čísla a jeho správného indexu řídícímu procesoru
-	MPI_Send(&send, 2, MPI_INT, EXEC_PROC, TAG_DON_VAL, MPI_COMM_WORLD);
+	MPI_Send(regZ, BUFF_SIZE, MPI_INT, EXEC_PROC, TAG_DON, MPI_COMM_WORLD);
 	
-//	cerr<<"Ukončuji procesor: "<<sort->procId<<endl;
-//	
-//	indexZ = sort->procId;
-//	cerr<<"Procesor: "<<sort->procId<<" Zindex před odesláním: "<<indexZ<<endl;
-////	
-//	MPI_Send(&indexZ, BUFSIZE, MPI_INTEGER, EXEC_PROC, TAG_DON_IND, MPI_COMM_WORLD);
-//	cerr<<"Procesor: "<<sort->procId<<" Odesilá hodnotu a správný index procesoru 0"<<endl;
+	// Vyčištění paměti
+	free(regX);
+	free(regY);
+	free(regZ);
 }
 
 // Měření - MPI_wtime
 
- int main(int argc, char *argv[])
- {
+int main(int argc, char *argv[])
+{
+	// Struktura pro vlastnosti procesorů
 	T_SORT* sort = new T_SORT;
 	 
-	/*executiveSort();	
-	return EXIT_SUCCESS;
-	char idstr[32];
-	char buff[BUFSIZE];
-	int numprocs;
-	int myid;
-	int i;*/
-	MPI_Status stat; 
+	// Analýza času
 	double time1, time2;
 	bool analyzis = false;
  
 	MPI_Init(&argc,&argv); /* inicializace MPI */
-	MPI_Comm_size(MPI_COMM_WORLD,&sort->procCount); /* zjistĂ­me, kolik procesĹŻ bÄ›ĹľĂ­ */
-	MPI_Comm_rank(MPI_COMM_WORLD,&sort->procId); /* zjistĂ­me id svĂ©ho procesu */
+	MPI_Comm_size(MPI_COMM_WORLD,&sort->procCount); /* zjíštění počtu procesorů*/
+	MPI_Comm_rank(MPI_COMM_WORLD,&sort->procId); /* zjištění ID procesoru */
    
-	sort->regC = 1;
 	sort->nextProc = sort->procId+1;
 	sort->prevProc = sort->procId-1;
 
