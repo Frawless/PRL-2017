@@ -21,8 +21,9 @@
 
 using namespace std;
 
+// velikost přednášené struktury
 #define BUFF_SIZE 2
-
+// Definované TAGy pro komunikaci
 #define TAG_DON 0
 #define TAG_BUS 1
 #define TAG_LIN 2
@@ -43,6 +44,8 @@ typedef struct {
 	int index;
 } T_REG;
 
+// Proměnná pro časovou analýzu
+bool analyzis = false;
 
 long long int numCnt = 0;
 
@@ -65,6 +68,9 @@ void executiveSort(T_SORT* sort){
 	T_REG* regX = new T_REG;
 	T_REG* regZ = new T_REG;
 	
+	// Analýza času
+	double time1, time2;
+	
 	while(1){
 		number = inputFile.get();
 		// Zjistíme, že jsme na konci souboru, poslední číslo je -1 (EOF)
@@ -75,12 +81,22 @@ void executiveSort(T_SORT* sort){
 	
 	inputFile.close();
 	
-	// Vypsání načtených čísel
-	for(i = numbers.begin(); i != numbers.end(); ++i)
-		cout<<*i<<" ";
-	cout<<endl;
-	
+	int z = 1;
 	numCnt = numbers.size();
+	// Vypsání načtených čísel
+	if(!analyzis){
+		for(i = numbers.begin(); i != numbers.end(); ++i){
+			if(z == numCnt)
+				cout<<*i;
+			else
+				cout<<*i<<" ";
+			z++;
+		}
+		cout<<endl;		
+	}
+
+	// Začátek měření
+	time1 = MPI_Wtime();
 	
 	// Rozesílání čísel
 	for(int i = 0; i < numCnt; i++)
@@ -101,14 +117,27 @@ void executiveSort(T_SORT* sort){
 		sortedNumbers[regZ->index-1] = regZ->value;
 	}
 	
-	// Výsledný výpis
-	for(int z = 0; z < numCnt; z++)
-		cout<<sortedNumbers[z]<<endl;	
+	// Konec spuštění procesoru
+	time2 = MPI_Wtime();
+	
+	if(!analyzis){
+		// Výsledný výpis
+		for(int z = 0; z < numCnt; z++)
+			cout<<sortedNumbers[z]<<endl;	
+	}
+	// Výpis času
+	else{
+		printf("MPI_Wtime() %d: %1.6f s\n",sort->procId, time2-time1);
+		fflush(stdout);		
+	}
 	
 	free(regX);
 	free(regZ);
 }
 
+/* 
+ * Funkce pro jednotlivé řadící procesory
+ */
 void sortNumbers(T_SORT* sort){
 	// Jednotlivé registry
 	T_REG* regX = new T_REG;
@@ -164,10 +193,6 @@ int main(int argc, char *argv[])
 {
 	// Struktura pro vlastnosti procesorů
 	T_SORT* sort = new T_SORT;
-	 
-	// Analýza času
-	double time1, time2;
-	bool analyzis = false;
  
 	MPI_Init(&argc,&argv); /* inicializace MPI */
 	MPI_Comm_size(MPI_COMM_WORLD,&sort->procCount); /* zjíštění počtu procesorů*/
@@ -175,24 +200,12 @@ int main(int argc, char *argv[])
    
 	sort->nextProc = sort->procId+1;
 	sort->prevProc = sort->procId-1;
-
-	// Začátek spuštění procesoru
-	time1 = MPI_Wtime();
 	
+	// Spuštění procesorů
 	if(sort->procId == 0)
 		executiveSort(sort);
 	else
-		sortNumbers(sort);
-	
-	// Konec spuštění procesoru
-	time2 = MPI_Wtime();
-	
-	// Výpis času
-	if(analyzis)
-	{
-		printf("MPI_Wtime() procesoru %d: %1.6f\n",sort->procId, time2-time1);
-		fflush(stdout);		
-	}
+		sortNumbers(sort);	
 	
 	free(sort);
 	MPI_Finalize(); 
