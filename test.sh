@@ -2,7 +2,12 @@
 
 if test "$#" -ne 1; then
     echo "Chybý počet parametrů! Zadejte prosím počet čísel pro seřazení."
-	exit
+	exit 1
+fi
+	
+re='^[0-9]+$'
+if ! [[ $1 =~ $re ]] ; then
+   echo "Chybný formát vstupu! Zadejte číslo." >&2; exit 1
 fi
 
 #pocet cisel bud zadam nebo 10 :)

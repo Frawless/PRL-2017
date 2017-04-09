@@ -45,7 +45,7 @@ typedef struct {
 } T_REG;
 
 // Proměnná pro časovou analýzu
-bool analyzis = true;
+bool analyzis = false;
 
 long long int numCnt = 0;
 
