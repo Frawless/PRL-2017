@@ -1,16 +1,24 @@
 #!/bin/bash
 
-#vypise pocet cisel a procesoru
-numCount=$1
+if test "$#" -ne 1; then
+    echo "Chybý počet parametrů! Zadejte prosím počet čísel pro seřazení."
+	exit
+fi
+
+#pocet cisel bud zadam nebo 10 :)
+if [ $# -lt 1 ];then 
+    numCount=10;
+else
+    numCount=$1;
+fi;
+
 numProc=$((numCount+1))
-echo "Počet čísel:"$numCount
-echo "Počet procesorů: "$numProc
 
 #preklad cpp zdrojaku
-mpic++ --prefix /usr/local/share/OpenMPI -o es es.cpp
+mpic++ --prefix /usr/local/share/OpenMPI -std=c++11 -o es es.cpp
 
 #vyrobeni souboru s random cisly
-dd if=/dev/random bs=1 count=$numCount of=numbers
+dd if=/dev/urandom bs=1 count=$numCount of=numbers &>/dev/null
 
 #spusteni
 mpirun --prefix /usr/local/share/OpenMPI -np $numProc es

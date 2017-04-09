@@ -3,8 +3,8 @@
 *		Enumeration sort						*
 *		Autor: Bc. Jakub Stejskal <xstejs24>	*
 *		Nazev souboru: enum-sort.cpp			*
-*		Datum: 15. 3. 2017						*		
-*		Verze: 1.0								*
+*		Datum: 9. 4. 2017						*		
+*		Verze: 1.2								*
 *************************************************/
 
 /*
@@ -45,17 +45,17 @@ typedef struct {
 } T_REG;
 
 // Proměnná pro časovou analýzu
-bool analyzis = false;
+bool analyzis = true;
 
 long long int numCnt = 0;
 
 MPI_Status stat;
 
-
 /*
  * Funkce pro řídící procesor
  */
 void executiveSort(T_SORT* sort){
+	// Načtení vstupu
 	ifstream inputFile;
 	inputFile.open("numbers", ios::binary);
 	sort->nextProc = 1;
@@ -64,7 +64,7 @@ void executiveSort(T_SORT* sort){
 	vector<int>::iterator i;
 	vector<int> numbers;
 	int sortedNumbers[sort->procCount-1];
-	
+	// Registry
 	T_REG* regX = new T_REG;
 	T_REG* regZ = new T_REG;
 	
@@ -127,7 +127,7 @@ void executiveSort(T_SORT* sort){
 	}
 	// Výpis času
 	else{
-		printf("MPI_Wtime() %d: %1.6f s\n",sort->procId, time2-time1);
+		printf("MPI_Wtime() %d: %1.9f s\n",sort->procId, (time2-time1));
 		fflush(stdout);		
 	}
 	
